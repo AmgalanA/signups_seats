@@ -1,0 +1,59 @@
+#!/bin/sh
+# Applies the firewall of one container from /rules/$FW_NAME.rules.
+# Safe to run again at any time: it rebuilds the rules from the file.
+#
+# Policy: drop everything, then allow
+#   - traffic inside the container itself (loopback),
+#   - packets of connections that were already allowed (stateful firewall),
+#   - new TCP connections listed in the rules file.
+set -eu
+
+file="/rules/${FW_NAME}.rules"
+if [ ! -f "$file" ]; then
+    echo "fw-apply: no rules file $file" >&2
+    exit 1
+fi
+
+# Only the "filter" table is touched. Docker keeps its own rules for the
+# built-in DNS in the "nat" table; those must stay.
+iptables -P INPUT DROP
+iptables -P OUTPUT DROP
+iptables -P FORWARD DROP
+iptables -F INPUT
+iptables -F OUTPUT
+iptables -F FORWARD
+
+iptables -A INPUT  -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A INPUT  -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# Each line of the rules file: direction, peer address, port, rule name.
+tr -d '\r' < "$file" | while read -r dir peer port name || [ -n "${dir:-}" ]; do
+    case "$dir" in
+        '' | '#'*) continue ;;
+    esac
+    if [ -z "${name:-}" ]; then
+        echo "fw-apply: bad line in $file: $dir $peer $port" >&2
+        exit 1
+    fi
+    case "$dir" in
+        in)
+            if [ "$peer" = "any" ]; then
+                iptables -A INPUT -p tcp --dport "$port" \
+                    -m conntrack --ctstate NEW -m comment --comment "$name" -j ACCEPT
+            else
+                iptables -A INPUT -p tcp -s "$peer" --dport "$port" \
+                    -m conntrack --ctstate NEW -m comment --comment "$name" -j ACCEPT
+            fi
+            ;;
+        out)
+            iptables -A OUTPUT -p tcp -d "$peer" --dport "$port" \
+                -m conntrack --ctstate NEW -m comment --comment "$name" -j ACCEPT
+            ;;
+        *)
+            echo "fw-apply: unknown direction '$dir' in $file" >&2
+            exit 1
+            ;;
+    esac
+done

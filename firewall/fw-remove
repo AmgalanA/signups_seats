@@ -1,0 +1,43 @@
+#!/bin/sh
+# Removes one allow rule by its name, for the "what if a needed rule is
+# missing" demonstration. Usage: fw-remove booking-to-postgres
+# Put everything back with: fw-apply
+set -eu
+
+name="${1:?usage: fw-remove <rule name>}"
+file="/rules/${FW_NAME}.rules"
+
+# Find the rule in the rules file to learn its direction, peer and port.
+line=$(tr -d '\r' < "$file" | awk -v n="$name" '$1 != "" && $1 !~ /^#/ && $4 == n { print $1, $2, $3; exit }')
+if [ -z "$line" ]; then
+    echo "fw-remove: no rule named '$name' in $file" >&2
+    exit 1
+fi
+set -- $line
+dir="$1"; peer="$2"; port="$3"
+
+# 1. Delete the allow rule, so no NEW connection can be opened.
+if [ "$dir" = "in" ]; then
+    if [ "$peer" = "any" ]; then
+        iptables -D INPUT -p tcp --dport "$port" \
+            -m conntrack --ctstate NEW -m comment --comment "$name" -j ACCEPT
+    else
+        iptables -D INPUT -p tcp -s "$peer" --dport "$port" \
+            -m conntrack --ctstate NEW -m comment --comment "$name" -j ACCEPT
+    fi
+else
+    iptables -D OUTPUT -p tcp -d "$peer" --dport "$port" \
+        -m conntrack --ctstate NEW -m comment --comment "$name" -j ACCEPT
+fi
+
+# 2. Forget the connections that the rule had let through. Without this,
+#    connections opened earlier would keep working as "established".
+if [ "$dir" = "in" ] && [ "$peer" != "any" ]; then
+    conntrack -D -p tcp -s "$peer" --dport "$port" >/dev/null 2>&1 || true
+elif [ "$dir" = "in" ]; then
+    conntrack -D -p tcp --dport "$port" >/dev/null 2>&1 || true
+else
+    conntrack -D -p tcp -d "$peer" --dport "$port" >/dev/null 2>&1 || true
+fi
+
+echo "removed rule '$name' ($dir $peer port $port) from ${FW_NAME}"

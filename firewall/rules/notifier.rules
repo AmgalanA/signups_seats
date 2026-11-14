@@ -1,0 +1,6 @@
+# Firewall of notifier (internal 172.28.2.30, data 172.28.3.30).
+# Nobody may connect to notifier; it only connects to the broker nodes.
+# direction  peer          port  rule name
+out          172.28.3.61   5672  notifier-to-rabbit1
+out          172.28.3.62   5672  notifier-to-rabbit2
+out          172.28.3.63   5672  notifier-to-rabbit3

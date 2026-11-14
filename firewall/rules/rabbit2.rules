@@ -1,0 +1,23 @@
+# Firewall of broker node rabbit2 (data 172.28.3.62).
+# Clients (booking, notifier) use port 5672. The three nodes talk to each
+# other on 4369 (node lookup) and 25672 (cluster traffic).
+# Its web console is published on 127.0.0.1:15673 of the laptop, so the
+# cluster can still be looked at when rabbit1 is down.
+# direction  peer          port   rule name
+in           172.28.3.20   5672   booking-to-rabbit2
+in           172.28.3.30   5672   notifier-to-rabbit2
+in           172.28.3.1    15672  laptop-to-rabbit2-console
+in           172.28.3.61   4369   rabbit1-to-rabbit2-lookup
+in           172.28.3.61   25672  rabbit1-to-rabbit2-cluster
+in           172.28.3.63   4369   rabbit3-to-rabbit2-lookup
+in           172.28.3.63   25672  rabbit3-to-rabbit2-cluster
+out          172.28.3.61   4369   rabbit2-to-rabbit1-lookup
+out          172.28.3.61   25672  rabbit2-to-rabbit1-cluster
+out          172.28.3.63   4369   rabbit2-to-rabbit3-lookup
+out          172.28.3.63   25672  rabbit2-to-rabbit3-cluster
+# Command-line tools (rabbitmqctl) on one node collect answers from the
+# other nodes on ports 35672-35682.
+in           172.28.3.61   35672:35682  rabbit1-to-rabbit2-cli
+out          172.28.3.61   35672:35682  rabbit2-to-rabbit1-cli
+in           172.28.3.63   35672:35682  rabbit3-to-rabbit2-cli
+out          172.28.3.63   35672:35682  rabbit2-to-rabbit3-cli

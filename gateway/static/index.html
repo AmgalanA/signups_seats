@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Запись на места</title>
+  <style>
+    :root {
+      --bg: #f4f6f8; --panel: #ffffff; --fg: #18212b; --muted: #5b6875; --line: #d3dae1;
+      --free: #1a7f4e; --free-bg: #e8f6ee; --taken: #c2cad3; --taken-fg: #6a7683;
+      --mine: #1d5fd1; --danger: #b3261e; --danger-bg: #fdecea; --ok-bg: #e8f6ee;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #12171d; --panel: #1b222b; --fg: #e7ecf1; --muted: #9aa7b4; --line: #313b47;
+        --free: #5fd398; --free-bg: #17301f; --taken: #39434f; --taken-fg: #8793a0;
+        --mine: #6ea3ff; --danger: #ff8a80; --danger-bg: #3a1c1a; --ok-bg: #17301f;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 20px; }
+    h1 { font-size: 1.7rem; margin: 0; }
+    h2 { font-size: 1.1rem; margin: 0 0 10px; }
+    p { margin: 0; }
+    .muted { color: var(--muted); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+
+    /* Hall */
+    .stage { text-align: center; font-size: .8rem; letter-spacing: .2em; color: var(--muted);
+             border: 1px solid var(--line); border-radius: 6px; padding: 6px; margin-bottom: 18px; }
+    .hall { display: flex; flex-direction: column; gap: 8px; overflow-x: auto; padding: 5px; }
+    .row { display: flex; align-items: center; gap: 8px; }
+    .row-label { flex: none; width: 56px; font-size: .85rem; color: var(--muted); }
+    .seat { flex: 1 1 0; min-width: 38px; height: 42px; border-radius: 8px 8px 4px 4px; font: inherit; font-weight: 600;
+            border: 2px solid var(--free); background: var(--free-bg); color: var(--free); cursor: pointer; }
+    .seat:hover:not(:disabled) { filter: brightness(.95); }
+    .seat:focus-visible { outline: 3px solid var(--mine); outline-offset: 2px; }
+    .seat[data-state="taken"] { border-color: var(--taken); background: var(--taken); color: var(--taken-fg); cursor: not-allowed; }
+    .seat[data-state="mine"] { border-color: var(--mine); background: var(--mine); color: #fff; cursor: default; }
+    .seat.selected { outline: 3px solid var(--mine); outline-offset: 2px; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; font-size: .9rem; color: var(--muted); }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .swatch { width: 16px; height: 16px; border-radius: 4px; border: 2px solid var(--free); background: var(--free-bg); }
+    .swatch.taken { border-color: var(--taken); background: var(--taken); }
+    .swatch.mine { border-color: var(--mine); background: var(--mine); }
+
+    /* Form */
+    form { display: flex; flex-direction: column; gap: 12px; }
+    .fields { display: flex; flex-wrap: wrap; gap: 12px; }
+    label { display: flex; flex-direction: column; gap: 4px; flex: 1 1 220px; font-size: .9rem; color: var(--muted); }
+    input { font: inherit; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); }
+    input:focus-visible { outline: 2px solid var(--mine); outline-offset: 1px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+    button.primary, button.plain, button.danger { font: inherit; padding: 9px 16px; border-radius: 6px; cursor: pointer; }
+    button.primary { border: 0; background: var(--mine); color: #fff; font-weight: 600; }
+    button.plain { border: 1px solid var(--line); background: transparent; color: var(--fg); }
+    button.danger { border: 1px solid var(--danger); background: transparent; color: var(--danger); padding: 5px 12px; }
+    button:disabled { opacity: .6; cursor: progress; }
+
+    .message { padding: 10px 14px; border-radius: 8px; }
+    .message.ok { background: var(--ok-bg); }
+    .message.fail { background: var(--danger-bg); color: var(--danger); }
+
+    ul.mine { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    ul.mine li { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+    footer { font-size: .85rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px; }
+    code { font-family: ui-monospace, Consolas, monospace; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Запись на места</h1>
+    <p class="muted">Выберите свободное место в зале, укажите имя и email.</p>
+  </header>
+
+  <div id="message" class="message" role="status" hidden></div>
+
+  <section class="panel" aria-label="Карта мест">
+    <div class="stage">СЦЕНА</div>
+    <div id="hall" class="hall"><p class="muted">Загрузка карты мест...</p></div>
+    <div class="legend">
+      <span><i class="swatch"></i>свободно</span>
+      <span><i class="swatch taken"></i>занято</span>
+      <span><i class="swatch mine"></i>ваше место</span>
+    </div>
+  </section>
+
+  <section id="form-panel" class="panel" hidden>
+    <h2 id="form-title">Запись</h2>
+    <form id="form">
+      <div class="fields">
+        <label>Имя
+          <input id="name" name="name" required maxlength="100" autocomplete="name">
+        </label>
+        <label>Email
+          <input id="email" name="email" type="email" required maxlength="254" autocomplete="email">
+        </label>
+      </div>
+      <div class="actions">
+        <button id="submit" class="primary" type="submit">Записаться</button>
+        <button id="cancel-select" class="plain" type="button">Выбрать другое место</button>
+      </div>
+    </form>
+  </section>
+
+  <section id="mine-panel" class="panel" hidden>
+    <h2>Ваши записи</h2>
+    <ul id="mine" class="mine"></ul>
+    <p class="muted" style="margin-top:10px;font-size:.85rem">Код отмены хранится только в этом браузере. С другого устройства отменить запись нельзя.</p>
+  </section>
+
+  <footer>
+    <span id="source">Карта мест: ещё не загружена</span>
+    <span id="hello">Сервис booking: проверка...</span>
+  </footer>
+</main>
+
+<script>
+  // Front end of the seat sign-up app. It talks only to gateway (same origin):
+  //   GET    /api/seats          seat map
+  //   POST   /api/signups        take a seat
+  //   DELETE /api/signups/{id}   cancel (needs the X-Cancel-Token header)
+  // All text from the server is put on the page with textContent, never as HTML.
+
+  const STORAGE_KEY = 'signup_seats.mine';
+  const REFRESH_MS = 5000;
+
+  const hall = document.getElementById('hall');
+  const message = document.getElementById('message');
+  const formPanel = document.getElementById('form-panel');
+  const formTitle = document.getElementById('form-title');
+  const form = document.getElementById('form');
+  const submitBtn = document.getElementById('submit');
+  const minePanel = document.getElementById('mine-panel');
+  const mineList = document.getElementById('mine');
+  const sourceLine = document.getElementById('source');
+  const helloLine = document.getElementById('hello');
+
+  let seats = [];              // last seat map from the server
+  let mine = loadMine();       // sign-ups made in this browser: {id, seat_id, row, number, token}
+  let selectedId = null;       // seat chosen in the form
+  let writes = 0;              // grows on every sign-up or cancel
+  let refreshing = false;
+  const buttons = new Map();   // seat id -> button
+
+  function loadMine() {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch { return []; }
+  }
+  function saveMine() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(mine)); } catch { /* private window: keep in memory */ }
+  }
+
+  function showMessage(text, kind) {
+    message.textContent = text;
+    message.className = 'message ' + kind;
+    message.hidden = false;
+  }
+  function clearMessage() { message.hidden = true; }
+
+  // ---- seat map ----
+
+  async function refresh() {
+    if (refreshing) return;
+    refreshing = true;
+    const startedAt = writes;
+    try {
+      const res = await fetch('/api/seats', { cache: 'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      // A sign-up or cancel finished while this request was in flight:
+      // the answer may be older than what the page already knows.
+      if (startedAt !== writes) { refreshing = false; return refresh(); }
+      seats = data.seats;
+      renderSeats();
+      const cache = res.headers.get('X-Cache');
+      const from = cache === 'HIT' ? 'из кэша Redis' : 'из базы данных PostgreSQL';
+      sourceLine.textContent = 'Карта мест: ' + from + ' (X-Cache: ' + cache + '), обновлена в '
+        + new Date().toLocaleTimeString('ru-RU');
+    } catch (err) {
+      sourceLine.textContent = 'Карта мест: сервис недоступен (' + err.message + ')';
+    } finally {
+      refreshing = false;
+    }
+  }
+
+  function buildHall() {
+    hall.textContent = '';
+    buttons.clear();
+    const rows = new Map();
+    for (const s of seats) {
+      if (!rows.has(s.row)) rows.set(s.row, []);
+      rows.get(s.row).push(s);
+    }
+    for (const [rowNo, rowSeats] of rows) {
+      const row = document.createElement('div');
+      row.className = 'row';
+      const label = document.createElement('span');
+      label.className = 'row-label';
+      label.textContent = 'Ряд ' + rowNo;
+      row.append(label);
+      for (const s of rowSeats) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'seat';
+        b.textContent = s.number;
+        b.addEventListener('click', () => selectSeat(s.id));
+        buttons.set(s.id, b);
+        row.append(b);
+      }
+      hall.append(row);
+    }
+  }
+
+  const STATE_TEXT = { free: 'свободно', taken: 'занято', mine: 'ваше место' };
+
+  function renderSeats() {
+    if (buttons.size !== seats.length || seats.some(s => !buttons.has(s.id))) buildHall();
+
+    for (const s of seats) {
+      const isMine = s.status === 'taken' && mine.some(m => m.seat_id === s.id);
+      const state = isMine ? 'mine' : s.status;
+      const b = buttons.get(s.id);
+      b.dataset.state = state;
+      b.disabled = state !== 'free';
+      b.classList.toggle('selected', s.id === selectedId);
+      b.setAttribute('aria-label', 'Ряд ' + s.row + ', место ' + s.number + ', ' + STATE_TEXT[state]);
+    }
+
+    // Someone else took the seat that is open in the form.
+    const selected = seats.find(s => s.id === selectedId);
+    if (selected && selected.status !== 'free') {
+      closeForm();
+      showMessage('Это место только что заняли. Выберите другое.', 'fail');
+    }
+    renderMine();
+  }
+
+  // ---- sign-up form ----
+
+  function selectSeat(id) {
+    const s = seats.find(x => x.id === id);
+    if (!s || s.status !== 'free') return;
+    selectedId = id;
+    clearMessage();
+    formTitle.textContent = 'Запись: ряд ' + s.row + ', место ' + s.number;
+    formPanel.hidden = false;
+    renderSeats();
+    document.getElementById('name').focus();
+  }
+
+  function closeForm() {
+    selectedId = null;
+    formPanel.hidden = true;
+    for (const b of buttons.values()) b.classList.remove('selected');
+  }
+
+  document.getElementById('cancel-select').addEventListener('click', () => { closeForm(); clearMessage(); });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (selectedId === null) return;
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/signups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seat_id: selectedId,
+          name: form.elements.name.value,
+          email: form.elements.email.value,
+        }),
+      });
+      writes++;
+      if (res.status === 201) {
+        const su = await res.json();
+        mine.push({ id: su.id, seat_id: su.seat_id, row: su.row, number: su.number, token: su.cancel_token });
+        saveMine();
+        closeForm();
+        form.reset();
+        showMessage('Вы записаны: ряд ' + su.row + ', место ' + su.number + ' на почту ' + su.email + '.', 'ok');
+      } else if (res.status === 409) {
+        closeForm();
+        showMessage('Это место уже заняли. Выберите другое.', 'fail');
+      } else if (res.status === 400) {
+        showMessage('Проверьте имя и email: сервер их не принял.', 'fail');
+      } else if (res.status === 404) {
+        closeForm();
+        showMessage('Такого места нет.', 'fail');
+      } else {
+        showMessage('Не получилось записаться (ошибка ' + res.status + '). Попробуйте ещё раз.', 'fail');
+      }
+    } catch (err) {
+      showMessage('Сервис недоступен. Попробуйте ещё раз.', 'fail');
+    } finally {
+      submitBtn.disabled = false;
+      refresh();
+    }
+  });
+
+  // ---- my sign-ups ----
+
+  function renderMine() {
+    mineList.textContent = '';
+    minePanel.hidden = mine.length === 0;
+    for (const m of mine) {
+      const li = document.createElement('li');
+      const text = document.createElement('span');
+      text.textContent = 'Ряд ' + m.row + ', место ' + m.number + ' (запись № ' + m.id + ')';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'danger';
+      btn.textContent = 'Отменить';
+      btn.addEventListener('click', () => cancelSignup(m, btn));
+      li.append(text, btn);
+      mineList.append(li);
+    }
+  }
+
+  async function cancelSignup(m, btn) {
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/signups/' + encodeURIComponent(m.id), {
+        method: 'DELETE',
+        headers: { 'X-Cancel-Token': m.token },
+      });
+      writes++;
+      if (res.status === 204 || res.status === 404) {
+        // 404: the sign-up is already gone (for example the database was recreated).
+        mine = mine.filter(x => x.id !== m.id);
+        saveMine();
+        showMessage(res.status === 204
+          ? 'Запись отменена: ряд ' + m.row + ', место ' + m.number + ' снова свободно.'
+          : 'Этой записи уже нет, она убрана из списка.', 'ok');
+      } else if (res.status === 403) {
+        showMessage('Код отмены не подошёл. Отменить эту запись из этого браузера нельзя.', 'fail');
+      } else {
+        showMessage('Не получилось отменить (ошибка ' + res.status + '). Попробуйте ещё раз.', 'fail');
+      }
+    } catch (err) {
+      showMessage('Сервис недоступен. Попробуйте ещё раз.', 'fail');
+    } finally {
+      btn.disabled = false;
+      refresh();
+    }
+  }
+
+  // ---- start ----
+
+  async function hello() {
+    try {
+      const res = await fetch('/api/hello');
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      helloLine.textContent = 'Сервис ' + data.service + ': ' + data.message;
+    } catch (err) {
+      helloLine.textContent = 'Сервис booking: недоступен (' + err.message + ')';
+    }
+  }
+
+  renderMine();
+  hello();
+  refresh();
+  setInterval(refresh, REFRESH_MS);
+</script>
+</body>
+</html>

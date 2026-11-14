@@ -1,0 +1,5 @@
+# Firewall of gateway (public 172.28.1.10, internal 172.28.2.10).
+# Everything not listed here is dropped.
+# direction  peer          port  rule name
+in           any           80    clients-to-gateway
+out          172.28.2.20   8080  gateway-to-booking

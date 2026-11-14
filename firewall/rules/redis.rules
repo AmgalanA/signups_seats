@@ -1,0 +1,4 @@
+# Firewall of Redis (data 172.28.3.50).
+# Only booking may connect; the cache itself connects to nobody.
+# direction  peer          port  rule name
+in           172.28.3.20   6379  booking-to-redis

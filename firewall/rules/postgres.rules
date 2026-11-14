@@ -1,0 +1,6 @@
+# Firewall of the primary PostgreSQL (data 172.28.3.40).
+# booking works with the data; the standby connects to copy every change.
+# The primary itself connects to nobody.
+# direction  peer          port  rule name
+in           172.28.3.20   5432  booking-to-postgres
+in           172.28.3.41   5432  standby-replicates-from-primary

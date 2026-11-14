@@ -1,0 +1,10 @@
+# Firewall of booking (internal 172.28.2.20, data 172.28.3.20).
+# Everything not listed here is dropped.
+# direction  peer          port  rule name
+in           172.28.2.10   8080  gateway-to-booking
+out          172.28.3.40   5432  booking-to-postgres
+out          172.28.3.41   5432  booking-to-postgres-standby
+out          172.28.3.50   6379  booking-to-redis
+out          172.28.3.61   5672  booking-to-rabbit1
+out          172.28.3.62   5672  booking-to-rabbit2
+out          172.28.3.63   5672  booking-to-rabbit3
